@@ -1,6 +1,6 @@
 [Unit]
 Description=ZFS Rewrite - Rewrite files in ZFS dataset
-Documentation=https://github.com/your-repo/zfs-rewrite.py
+Documentation=https://github.com/ruipin/zfs-rewrite.py
 After=zfs.target
 
 [Service]

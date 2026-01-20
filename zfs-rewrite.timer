@@ -1,6 +1,6 @@
 [Unit]
 Description=Run ZFS Rewrite hourly
-Documentation=https://github.com/your-repo/zfs-rewrite.py
+Documentation=https://github.com/ruipin/zfs-rewrite.py
 
 [Timer]
 OnCalendar=hourly
