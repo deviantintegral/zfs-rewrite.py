@@ -75,6 +75,62 @@ Notes on the state file:
   within a single run, hardlink deduplication by device/inode still prevents
   duplicate rewrites for links to the same inode.
 
+## Systemd Timer
+
+To run the script automatically on an hourly schedule, use the included systemd
+unit files.
+
+**Installation:**
+
+```bash
+# Install the script
+sudo cp zfs-rewrite.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/zfs-rewrite.py
+
+# Install systemd unit files
+sudo cp zfs-rewrite.service zfs-rewrite.timer /etc/systemd/system/
+
+# Create state directory
+sudo mkdir -p /var/lib/zfs-rewrite
+```
+
+**Configuration:**
+
+Edit the service file to set your dataset path and options:
+
+```bash
+sudo systemctl edit --full zfs-rewrite.service
+```
+
+Update the `ExecStart` line with your dataset path:
+
+```ini
+ExecStart=/usr/local/bin/zfs-rewrite.py /pool/dataset --state-file /var/lib/zfs-rewrite/state.txt
+```
+
+Add `-P` for physical rewrite if your pool supports it, or `--dry-run` for
+testing.
+
+**Enable and start:**
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now zfs-rewrite.timer
+```
+
+**Verify:**
+
+```bash
+# Check timer status
+sudo systemctl list-timers zfs-rewrite.timer
+
+# View logs
+sudo journalctl -u zfs-rewrite.service
+```
+
+The timer runs hourly with a randomized delay of up to 5 minutes and is
+persistent (catches up on missed runs if the system was down).
+
 ## Author
 
 Rui Pinheiro
