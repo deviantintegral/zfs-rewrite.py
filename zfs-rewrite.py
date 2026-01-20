@@ -22,6 +22,8 @@ Key behaviors:
   invoking the ZFS command.
 - Optional physical rewrite: with ``-P``/``--physical-rewrite``, use
   ``zfs rewrite -P <file>`` to perform a physical rewrite.
+- Space-aware: with ``-m``/``--min-free-percent``, the script monitors pool
+  free space and stops early if it drops below the specified threshold.
 
 Notes:
 
@@ -72,6 +74,8 @@ def parse_arguments() -> argparse.Namespace:
             - physical_rewrite (bool): If True, use ``zfs rewrite -P`` for
               physical rewrite; only use if your pool has the
               ``physical_rewrite`` feature enabled.
+            - min_free_percent (float): Minimum pool free space percentage
+              required to continue processing; 0 disables the check.
     """
     parser = argparse.ArgumentParser(
         description="Script to rewrite ZFS datasets while avoiding duplicate rewrites of hardlinked files."
@@ -100,6 +104,15 @@ def parse_arguments() -> argparse.Namespace:
         help="Perform a dry run without actually rewriting files",
         action="store_true",
     )
+    parser.add_argument(
+        "-m",
+        "--min-free-percent",
+        help="Minimum pool free space percentage required to continue processing. "
+        "If free space drops below this threshold, the script stops early. "
+        "Default is 0 (disabled).",
+        type=float,
+        default=0.0,
+    )
     return parser.parse_args()
 
 
@@ -113,6 +126,27 @@ DevInode.__doc__ = (
     "    dev (int): Device ID (st_dev).\n"
     "    inode (int): Inode number (st_ino)."
 )
+
+
+def get_pool_free_percent(path: str) -> float:
+    """Get the free space percentage of the filesystem containing a path.
+
+    Uses ``os.statvfs`` to query filesystem statistics and calculates the
+    percentage of free space available.
+
+    Args:
+        path (str): A path on the filesystem to check.
+
+    Returns:
+        float: The percentage of free space (0.0 to 100.0).
+
+    Raises:
+        OSError: If the filesystem cannot be queried.
+    """
+    stat = os.statvfs(path)
+    if stat.f_blocks == 0:
+        return 0.0
+    return (stat.f_bfree / stat.f_blocks) * 100.0
 
 
 def check_seen(file_path: str) -> DevInode | None:
@@ -244,8 +278,10 @@ def collect_files(path: str) -> Set[str]:
 def rewrite_zfs_files(
     files: Set[str],
     rewritten_paths_file: str,
+    path: str,
     dry_run: bool = False,
     physical_rewrite: bool = False,
+    min_free_percent: float = 0.0,
 ) -> None:
     """Rewrite the provided files using ``zfs rewrite``, with progress output.
 
@@ -258,11 +294,15 @@ def rewrite_zfs_files(
         files (Set[str]): Set of file paths to process.
         rewritten_paths_file (str): Path to a text file where successfully
             rewritten file paths will be appended (one per line).
+        path (str): Root directory path, used for checking pool free space.
         dry_run (bool, optional): If True, only print intended actions without
             executing the ZFS command. Defaults to False.
         physical_rewrite (bool, optional): If True, use ``zfs rewrite -P`` for
             physical rewrite. Only enable if your ZFS pool supports the
             ``physical_rewrite`` feature. Defaults to False.
+        min_free_percent (float, optional): Minimum pool free space percentage
+            required to continue processing. If free space drops below this
+            threshold, the loop breaks early. Defaults to 0.0 (disabled).
 
     Raises:
         subprocess.CalledProcessError: Propagated if the ``zfs`` command fails
@@ -293,8 +333,20 @@ def rewrite_zfs_files(
 
         num_processed = 0
         num_rewritten = 0
+        stopped_for_free_space = False
 
         for file_path in files:
+            # Check free space threshold before processing each file
+            if min_free_percent > 0:
+                free_percent = get_pool_free_percent(path)
+                if free_percent < min_free_percent:
+                    print(
+                        f"Stopping early: pool free space ({free_percent:.1f}%) "
+                        f"is below threshold ({min_free_percent:.1f}%)"
+                    )
+                    stopped_for_free_space = True
+                    break
+
             num_processed += 1
             percent = math.floor((num_processed / num_files) * 100)
             progress_str = f"({num_processed:>{max_digits}}/{num_files:>{max_digits}} {percent:>3}%)"
@@ -339,9 +391,12 @@ def rewrite_zfs_files(
             rewritten_f.close()
 
     print(f"Done. Processed {num_processed} files, rewritten {num_rewritten} files.")
+    if stopped_for_free_space:
+        print(f"Stopped early due to low free space ({num_files - num_processed} files remaining).")
     if dry_run:
         print("Dry run mode: no files were actually rewritten.")
-    assert num_processed == num_files
+    if not stopped_for_free_space:
+        assert num_processed == num_files
 
 
 if __name__ == "__main__":
@@ -351,6 +406,8 @@ if __name__ == "__main__":
     rewrite_zfs_files(
         files,
         args.rewritten_paths_file,
+        path=args.path,
         dry_run=args.dry_run,
         physical_rewrite=args.physical_rewrite,
+        min_free_percent=args.min_free_percent,
     )
