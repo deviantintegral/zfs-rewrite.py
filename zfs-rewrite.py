@@ -60,6 +60,7 @@ import argparse
 import math
 import os
 import subprocess
+import sys
 from typing import Dict, NamedTuple, Set
 
 
@@ -192,6 +193,23 @@ def get_pool_free_percent(path: str) -> float:
     if total_bytes == 0:
         return 0.0
     return (free_bytes / total_bytes) * 100.0
+
+
+def is_pool_below_threshold(path: str, min_free_percent: float) -> tuple[bool, float]:
+    """Check if pool free space is below the minimum threshold.
+
+    Args:
+        path: A path on a ZFS filesystem.
+        min_free_percent: Minimum free space percentage required.
+            If 0 or negative, the check is disabled and returns (False, 0.0).
+
+    Returns:
+        A tuple of (is_below_threshold, free_percent).
+    """
+    if min_free_percent <= 0:
+        return False, 0.0
+    free_percent = get_pool_free_percent(path)
+    return free_percent < min_free_percent, free_percent
 
 
 def check_seen(file_path: str) -> DevInode | None:
@@ -383,15 +401,14 @@ def rewrite_zfs_files(
 
         for file_path in files:
             # Check free space threshold before processing each file
-            if min_free_percent > 0:
-                free_percent = get_pool_free_percent(file_path)
-                if free_percent < min_free_percent:
-                    print(
-                        f"Stopping early: pool free space ({free_percent:.1f}%) "
-                        f"is below threshold ({min_free_percent:.1f}%)"
-                    )
-                    stopped_for_free_space = True
-                    break
+            below_threshold, free_percent = is_pool_below_threshold(file_path, min_free_percent)
+            if below_threshold:
+                print(
+                    f"Stopping early: pool free space ({free_percent:.1f}%) "
+                    f"is below threshold ({min_free_percent:.1f}%)"
+                )
+                stopped_for_free_space = True
+                break
 
             num_processed += 1
             percent = math.floor((num_processed / num_files) * 100)
@@ -447,6 +464,16 @@ def rewrite_zfs_files(
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    # Early check: skip expensive operations if pool is already too full
+    below_threshold, free_percent = is_pool_below_threshold(args.path, args.min_free_percent)
+    if below_threshold:
+        print(
+            f"Pool free space ({free_percent:.1f}%) is already below threshold "
+            f"({args.min_free_percent:.1f}%). Nothing to do."
+        )
+        sys.exit(0)
+
     print("Loading rewritten paths...")
     load_rewritten_paths(args.rewritten_paths_file)
     files = collect_files(args.path)
