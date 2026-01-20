@@ -14,7 +14,7 @@ Type=oneshot
 # ExecCondition skips this run if a previous instance is still running,
 # preventing queued runs from executing back-to-back (requires systemd 243+)
 ExecCondition=/usr/bin/flock --nonblock /run/lock/zfs-rewrite.lock --command /usr/bin/true
-ExecStart=/usr/bin/flock /run/lock/zfs-rewrite.lock /usr/local/bin/zfs-rewrite.py /path/to/dataset --state-file /var/lib/zfs-rewrite/state.txt
+ExecStart=/usr/bin/flock /run/lock/zfs-rewrite.lock /usr/local/bin/zfs-rewrite.py --path /path/to/dataset --rewritten-paths-file /var/lib/zfs-rewrite/state.txt
 Nice=19
 IOSchedulingClass=idle
 
