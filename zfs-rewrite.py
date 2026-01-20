@@ -303,6 +303,7 @@ def collect_files(path: str) -> Set[str]:
         - Non-regular files (directories, FIFOs, device nodes, symlinks) are
           ignored.
     """
+    print(f"Collecting files for {path}")
     files_set = set()
 
     for root, _, files in os.walk(path, followlinks=False):
