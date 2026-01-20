@@ -384,7 +384,7 @@ def rewrite_zfs_files(
         for file_path in files:
             # Check free space threshold before processing each file
             if min_free_percent > 0:
-                free_percent = get_pool_free_percent(path)
+                free_percent = get_pool_free_percent(file_path)
                 if free_percent < min_free_percent:
                     print(
                         f"Stopping early: pool free space ({free_percent:.1f}%) "
