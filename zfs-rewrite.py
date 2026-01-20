@@ -23,7 +23,9 @@ Key behaviors:
 - Optional physical rewrite: with ``-P``/``--physical-rewrite``, use
   ``zfs rewrite -P <file>`` to perform a physical rewrite.
 - Space-aware: with ``-m``/``--min-free-percent``, the script monitors pool
-  free space and stops early if it drops below the specified threshold.
+  free space (via ``zpool list``, not dataset quotas) and stops early if it
+  drops below the specified threshold. Default is 15% (stops when pool reaches
+  85% capacity) to avoid ZFS performance degradation that occurs above 80-90%.
 
 Notes:
 
@@ -108,10 +110,11 @@ def parse_arguments() -> argparse.Namespace:
         "-m",
         "--min-free-percent",
         help="Minimum pool free space percentage required to continue processing. "
-        "If free space drops below this threshold, the script stops early. "
-        "Default is 0 (disabled).",
+        "If pool free space drops below this threshold, the script stops early. "
+        "For example, 15 means stop when pool is 85%% full. "
+        "Default is 15 (stop at 85%% pool capacity) to avoid ZFS performance degradation.",
         type=float,
-        default=0.0,
+        default=15.0,
     )
     return parser.parse_args()
 
@@ -128,25 +131,67 @@ DevInode.__doc__ = (
 )
 
 
-def get_pool_free_percent(path: str) -> float:
-    """Get the free space percentage of the filesystem containing a path.
+def get_pool_name(path: str) -> str:
+    """Get the ZFS pool name for a given path.
 
-    Uses ``os.statvfs`` to query filesystem statistics and calculates the
-    percentage of free space available.
+    Uses ``zfs list`` to determine which dataset contains the path, then
+    extracts the pool name (the first component of the dataset name).
 
     Args:
-        path (str): A path on the filesystem to check.
+        path (str): A path on a ZFS filesystem.
+
+    Returns:
+        str: The pool name.
+
+    Raises:
+        subprocess.CalledProcessError: If the zfs command fails.
+        ValueError: If the path is not on a ZFS filesystem.
+    """
+    result = subprocess.run(
+        ["zfs", "list", "-Ho", "name", path],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    dataset = result.stdout.strip()
+    if not dataset:
+        raise ValueError(f"Path '{path}' is not on a ZFS filesystem")
+    # Pool name is the first component of the dataset path
+    return dataset.split("/")[0]
+
+
+def get_pool_free_percent(path: str) -> float:
+    """Get the free space percentage of the ZFS pool containing a path.
+
+    Uses ``zpool list`` to query pool-level statistics. This returns the
+    actual pool free space, unaffected by dataset quotas or reservations.
+
+    Args:
+        path (str): A path on a ZFS filesystem.
 
     Returns:
         float: The percentage of free space (0.0 to 100.0).
 
     Raises:
-        OSError: If the filesystem cannot be queried.
+        subprocess.CalledProcessError: If the zpool command fails.
+        ValueError: If the path is not on a ZFS filesystem or pool stats
+            cannot be parsed.
     """
-    stat = os.statvfs(path)
-    if stat.f_blocks == 0:
+    pool_name = get_pool_name(path)
+    result = subprocess.run(
+        ["zpool", "list", "-Hp", "-o", "free,size", pool_name],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    parts = result.stdout.strip().split("\t")
+    if len(parts) != 2:
+        raise ValueError(f"Unexpected zpool list output: {result.stdout}")
+    free_bytes = int(parts[0])
+    total_bytes = int(parts[1])
+    if total_bytes == 0:
         return 0.0
-    return (stat.f_bfree / stat.f_blocks) * 100.0
+    return (free_bytes / total_bytes) * 100.0
 
 
 def check_seen(file_path: str) -> DevInode | None:
