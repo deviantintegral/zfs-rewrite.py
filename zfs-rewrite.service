@@ -10,7 +10,8 @@ Type=oneshot
 # - Add --state-file /path/to/state.txt to track progress across runs
 # - Add --dry-run for testing
 # - Add -P for physical rewrite (requires pool feature)
-ExecStart=/usr/local/bin/zfs-rewrite.py /path/to/dataset --state-file /var/lib/zfs-rewrite/state.txt
+# flock prevents overlapping runs if previous execution is still running
+ExecStart=/usr/bin/flock --nonblock /run/lock/zfs-rewrite.lock /usr/local/bin/zfs-rewrite.py /path/to/dataset --state-file /var/lib/zfs-rewrite/state.txt
 Nice=19
 IOSchedulingClass=idle
 
