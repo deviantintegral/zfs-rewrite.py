@@ -447,6 +447,7 @@ def rewrite_zfs_files(
 
 if __name__ == "__main__":
     args = parse_arguments()
+    print("Loading rewritten paths...")
     load_rewritten_paths(args.rewritten_paths_file)
     files = collect_files(args.path)
     rewrite_zfs_files(
