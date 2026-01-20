@@ -1,0 +1,18 @@
+[Unit]
+Description=ZFS Rewrite - Rewrite files in ZFS dataset
+Documentation=https://github.com/your-repo/zfs-rewrite.py
+After=zfs.target
+
+[Service]
+Type=oneshot
+# Adjust the path and arguments as needed for your environment:
+# - Replace /path/to/dataset with your ZFS dataset mount point
+# - Add --state-file /path/to/state.txt to track progress across runs
+# - Add --dry-run for testing
+# - Add -P for physical rewrite (requires pool feature)
+ExecStart=/usr/local/bin/zfs-rewrite.py /path/to/dataset --state-file /var/lib/zfs-rewrite/state.txt
+Nice=19
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

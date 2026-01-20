@@ -1,0 +1,11 @@
+[Unit]
+Description=Run ZFS Rewrite hourly
+Documentation=https://github.com/your-repo/zfs-rewrite.py
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
